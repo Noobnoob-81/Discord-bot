@@ -331,14 +331,14 @@ const client = new Client({
 
 const startTime = Date.now();
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     try {
-        console.log(`✅ ${client.user.tag} is online fr`);
+        console.log(`✅ ${client.user?.tag || 'Bot'} is online fr`);
 
-        client.user.setPresence({
+        client.user?.setPresence({
             status: 'online',
             activities: [{ name: '!help | /start', type: ActivityType.Watching }]
-        });
+        }).catch(() => {});
 
         for (const guild of client.guilds.cache.values()) {
             try {
@@ -410,10 +410,8 @@ client.on('interactionCreate', async (interaction) => {
         if (commandName === 'help') {
             return await interaction.reply(
                 '**Slash commands:** `/ping` `/bal` `/rank` `/shop` `/coinflip` `/8ball` `/bossstatus` `/leaderboard` `/warnings` `/start`\n\n' +
-                '**Prefix commands:** `!guess` `!daily` `!rob` `!fight` `!bossfight` `!buy` `!level`\n' +
-                '**Anime:** `!domain` `!hollow` `!infinity` `!unleash` `!bankai` `!gear5` `!sharingan` `!attackontitan`\n' +
-                '**Fun:** `!ragebait successful` / `!ragebait`\n' +
-                '**Fake (members):** `?ban` `?kick` `?mute` `?hack` `?nuke`'
+                '**Prefix commands:** `!daily` `!rob` `!fight` `!buy` `!level`\n' +
+                '**Auto-responses:** Set with `/addresponse` and `/removeresponse`'
             ).catch(() => {});
         }
 
@@ -740,6 +738,7 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
     try {
         if (message.author?.bot) return;
+        if (!message.content) return;
 
         // Check impersonations
         const imp = activeImpersonations.get(message.channelId);
@@ -754,13 +753,128 @@ client.on('messageCreate', async (message) => {
         }
 
         // Auto-responses
-        const lowerContent = message.content?.toLowerCase?.() || '';
+        const lowerContent = message.content.toLowerCase();
         for (const [trigger, response] of autoResponses) {
             if (lowerContent.includes(trigger)) {
                 await message.reply(response).catch(() => {});
                 return;
             }
         }
+
+        // Prefix command handling
+        if (!message.content.startsWith(PREFIX)) return;
+
+        const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
+        const command = args.shift()?.toLowerCase();
+
+        if (command === 'daily') {
+            try {
+                const userId = message.author.id;
+                const now = Date.now();
+                const lastDaily = cooldowns.get(userId) || 0;
+                const cooldownTime = 24 * 60 * 60 * 1000; // 24 hours
+
+                if (now - lastDaily < cooldownTime) {
+                    const remaining = cooldownTime - (now - lastDaily);
+                    const hours = Math.floor(remaining / 3600000);
+                    return await message.reply(`⏳ Come back in ${hours}h for your daily reward!`).catch(() => {});
+                }
+
+                const dailyReward = 500;
+                addCoins(userId, dailyReward);
+                cooldowns.set(userId, now);
+                saveData();
+                return await message.reply(`✅ Daily reward! +${dailyReward} coins 🪙`).catch(() => {});
+            } catch (e) {
+                console.error('⚠️ daily error:', e.message);
+            }
+        }
+
+        if (command === 'rob') {
+            try {
+                const userId = message.author.id;
+                const now = Date.now();
+                const lastRob = bossCooldowns.get(`${userId}_rob`) || 0;
+                const cooldownTime = 30 * 1000; // 30 seconds
+
+                if (now - lastRob < cooldownTime) {
+                    return await message.reply('⏳ Robbery cooldown!').catch(() => {});
+                }
+
+                const random = Math.random();
+                if (random < 0.6) {
+                    const stolen = Math.floor(Math.random() * 200) + 50;
+                    addCoins(userId, stolen);
+                    bossCooldowns.set(`${userId}_rob`, now);
+                    saveData();
+                    return await message.reply(`✅ Successful robbery! +${stolen} coins 💰`).catch(() => {});
+                } else {
+                    addCoins(userId, -100);
+                    bossCooldowns.set(`${userId}_rob`, now);
+                    saveData();
+                    return await message.reply(`❌ Robbery failed! -100 coins penalty`).catch(() => {});
+                }
+            } catch (e) {
+                console.error('⚠️ rob error:', e.message);
+            }
+        }
+
+        if (command === 'buy') {
+            try {
+                const itemIndex = parseInt(args[0]) - 1;
+                if (isNaN(itemIndex) || itemIndex < 0 || itemIndex >= shop.length) {
+                    return await message.reply(`Use \`${PREFIX}buy [1-${shop.length}]\``).catch(() => {});
+                }
+
+                const item = shop[itemIndex];
+                const userId = message.author.id;
+                const userCoins = coins.get(userId) || 0;
+
+                if (userCoins < item.price) {
+                    return await message.reply(`❌ Not enough coins! You need ${item.price - userCoins} more.`).catch(() => {});
+                }
+
+                addCoins(userId, -item.price);
+                if (!weapons.has(userId)) weapons.set(userId, []);
+                weapons.get(userId).push(item);
+                saveData();
+                return await message.reply(`✅ Bought **${item.name}** for ${item.price} coins!`).catch(() => {});
+            } catch (e) {
+                console.error('⚠️ buy error:', e.message);
+            }
+        }
+
+        if (command === 'fight') {
+            try {
+                const userId = message.author.id;
+                const userWeapons = weapons.get(userId) || [];
+                if (!userWeapons.length) return await message.reply('❌ No weapons! Use `!buy 1`').catch(() => {});
+
+                const weapon = userWeapons[Math.floor(Math.random() * userWeapons.length)];
+                const damage = weapon.damage + Math.floor(Math.random() * 20);
+                const reward = Math.floor(damage * 2);
+
+                addCoins(userId, reward);
+                saveData();
+                return await message.reply(`⚔️ **${weapon.name}** dealt ${damage} damage! Earned ${reward} coins`).catch(() => {});
+            } catch (e) {
+                console.error('⚠️ fight error:', e.message);
+            }
+        }
+
+        if (command === 'level') {
+            try {
+                const userXp = xp.get(message.author.id) || 0;
+                const info = getLevelInfo(userXp);
+                const bar = buildHpBar(info.xpInLevel, info.xpRequired);
+                return await message.reply(
+                    `⭐ **Level ${info.level}** | XP: ${info.xpInLevel}/${info.xpRequired}\n${bar}`
+                ).catch(() => {});
+            } catch (e) {
+                console.error('⚠️ level error:', e.message);
+            }
+        }
+
     } catch (e) {
         console.error('⚠️ message handler error:', e.message);
     }

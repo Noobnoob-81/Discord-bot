@@ -126,6 +126,7 @@ function startWordle(guildId) {
 // ===== COMMANDS =====
 const commands = [
     new SlashCommandBuilder().setName('ping').setDescription('pong'),
+    new SlashCommandBuilder().setName('help').setDescription('Show all commands'),
     new SlashCommandBuilder().setName('bal').setDescription('Check your coins'),
     new SlashCommandBuilder().setName('daily').setDescription('Claim daily reward'),
     new SlashCommandBuilder().setName('rank').setDescription('Check your level'),
@@ -189,6 +190,22 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'ping') return interaction.reply('🏓 pong');
 
+        if (commandName === 'help') {
+            const embed = new EmbedBuilder()
+                .setColor(0x00ff88)
+                .setTitle('🤖 Ultimate Bot Commands')
+                .setDescription('Here are all available commands:')
+                .addFields(
+                    { name: '📊 Economy', value: '`/bal` `/daily` `/buy` `/sell` `/shop` `/inventory`', inline: true },
+                    { name: '📈 Progression', value: '`/rank` `/leaderboard`', inline: true },
+                    { name: '⚔️ Fun', value: '`/boss` `/wordle`', inline: true },
+                    { name: '🤖 AI', value: '`/ai`', inline: true },
+                    { name: '🎫 Utility', value: '`/ticketpanel` `/applypanel`', inline: true }
+                )
+                .setFooter({ text: 'Use slash commands (/) • All data is saved automatically' });
+            return interaction.reply({ embeds: [embed] });
+        }
+
         if (commandName === 'bal') {
             const embed = new EmbedBuilder()
                 .setColor(0x00ff00)
@@ -202,7 +219,7 @@ client.on('interactionCreate', async interaction => {
             if (last && Date.now() - last < 86400000) return interaction.reply({ content: '⏳ You already claimed today!', ephemeral: true });
             cooldowns.daily.set(id, Date.now());
             addCoins(id, 500);
-            saveData(); // Auto-save after economy action
+            saveData();
             return interaction.reply('💸 **+500 coins** added!');
         }
 
@@ -236,8 +253,8 @@ client.on('interactionCreate', async interaction => {
 
             addCoins(id, -item.price);
             if (!data.inventory[id]) data.inventory[id] = [];
-            data.inventory[id].push({ ...item }); // Deep copy to prevent reference issues
-            saveData(); // Auto-save
+            data.inventory[id].push({ ...item });
+            saveData();
             return interaction.reply(`🛒 Bought **${item.name}**!`);
         }
 
@@ -250,13 +267,14 @@ client.on('interactionCreate', async interaction => {
             const item = inv.splice(index, 1)[0];
             const sellPrice = Math.floor(item.price * 0.6);
             addCoins(id, sellPrice);
-            saveData(); // Auto-save
+            saveData();
             return interaction.reply(`💰 Sold **\( {item.name}** for ** \){sellPrice}** coins!`);
         }
 
         if (commandName === 'inventory') {
             const inv = data.inventory[id] || [];
-            return interaction.reply(inv.length ? `**Inventory:**\n${inv.map(i => `• \( {i.name} (⚔️ \){i.dmg})`).join('\n')}` : 'Empty.');
+            const text = inv.length ? inv.map(i => `• \( {i.name} (⚔️ \){i.dmg})`).join('\n') : 'Empty.';
+            return interaction.reply(`**Inventory:**\n${text}`);
         }
 
         if (commandName === 'boss') {
@@ -277,7 +295,7 @@ client.on('interactionCreate', async interaction => {
 
             boss.hp -= damage;
             addCoins(id, Math.floor(damage / 2));
-            saveData(); // Auto-save after boss reward
+            saveData();
 
             if (boss.hp <= 0) {
                 spawnBoss(guildId);

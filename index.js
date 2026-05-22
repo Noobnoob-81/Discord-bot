@@ -331,14 +331,14 @@ const client = new Client({
 
 const startTime = Date.now();
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     try {
-        console.log(`✅ ${client.user?.tag || 'Bot'} is online fr`);
+        console.log(`✅ ${client.user.tag} is online fr`);
 
-        client.user?.setPresence({
+        client.user.setPresence({
             status: 'online',
             activities: [{ name: '!help | /start', type: ActivityType.Watching }]
-        }).catch(() => {});
+        });
 
         for (const guild of client.guilds.cache.values()) {
             try {

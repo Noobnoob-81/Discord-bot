@@ -26,6 +26,7 @@ const autoResponses = new Map();
 
 let welcomeConfig = {};
 let logsConfig    = {};
+let boss           = null; // Initialize boss variable
 
 function loadData() {
     try {
@@ -126,93 +127,100 @@ client.on('interactionCreate', async interaction => {
     const userId = interaction.user.id;
     const { commandName } = interaction;
 
-    if (commandName === 'help') {
-        const embed = new EmbedBuilder()
-            .setColor(0x00ff88)
-            .setTitle('🤖 Bot Commands')
-            .setDescription('`/ping` `/bal` `/rank` `/profile` `/shop` `/buy` `/sell` `/bossfight` `/leaderboard` `/wordle`');
-        return interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'bal') return interaction.reply(`💰 ${coins.get(userId) || 0} coins`);
-
-    if (commandName === 'rank') {
-        const info = getLevelInfo(xp.get(userId));
-        const bar = '█'.repeat(Math.floor((info.xpInLevel / info.xpRequired) * 10)) + '░'.repeat(10 - Math.floor((info.xpInLevel / info.xpRequired) * 10));
-        return interaction.reply(`**Level \( {info.level}**\n \){bar}`);
-    }
-
-    if (commandName === 'profile') {
-        const userCoins = coins.get(userId) || 0;
-        const info = getLevelInfo(xp.get(userId));
-        const inv = weapons.get(userId) || [];
-        const embed = new EmbedBuilder()
-            .setColor(0xff00ff)
-            .setTitle(`${interaction.user.username}'s Profile`)
-            .addFields(
-                { name: 'Coins', value: `**${userCoins}**`, inline: true },
-                { name: 'Level', value: `**${info.level}**`, inline: true },
-                { name: 'Weapons', value: inv.length ? inv.map(w => `• \( {w.name} ( \){w.rarity})`).join('\n') : 'None' }
-            );
-        return interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'shop') {
-        let text = '**Shop:**\n';
-        shop.forEach(i => text += `**\( {i.name}** — 💰 \){i.price} — ⚔️${i.damage} — ${i.rarity}\n`);
-        return interaction.reply(text);
-    }
-
-    if (commandName === 'buy') {
-        const itemName = interaction.options.getString('item').toLowerCase();
-        const item = shop.find(i => i.name.toLowerCase() === itemName);
-        if (!item) return interaction.reply('❌ Item not found');
-        if ((coins.get(userId) || 0) < item.price) return interaction.reply('❌ Not enough coins');
-
-        coins.set(userId, (coins.get(userId) || 0) - item.price);
-        if (!weapons.has(userId)) weapons.set(userId, []);
-        weapons.get(userId).push({ ...item });
-        saveData();
-        return interaction.reply(`🛒 Bought **${item.name}**`);
-    }
-
-    if (commandName === 'sell') {
-        const itemName = interaction.options.getString('item').toLowerCase();
-        const inv = weapons.get(userId) || [];
-        const index = inv.findIndex(i => i.name.toLowerCase() === itemName);
-        if (index === -1) return interaction.reply('❌ You don\'t have that item');
-
-        const item = inv.splice(index, 1)[0];
-        const sellPrice = Math.floor(item.price * 0.6);
-        coins.set(userId, (coins.get(userId) || 0) + sellPrice);
-        saveData();
-        return interaction.reply(`💰 Sold **\( {item.name}** for ** \){sellPrice}** coins`);
-    }
-
-    if (commandName === 'bossfight') {
-        if (!boss) boss = { name: 'Cosmic God', health: 6000, maxHealth: 6000 };
-        const inv = weapons.get(userId) || [];
-        const best = [...inv].sort((a, b) => b.damage - a.damage)[0] || { damage: 20 };
-        const damage = best.damage + Math.floor(Math.random() * 40);
-
-        boss.health -= damage;
-        coins.set(userId, (coins.get(userId) || 0) + Math.floor(damage / 2));
-        saveData();
-
-        if (boss.health <= 0) {
-            boss = null;
-            return interaction.reply('🎊 Boss defeated!');
+    try {
+        if (commandName === 'help') {
+            const embed = new EmbedBuilder()
+                .setColor(0x00ff88)
+                .setTitle('🤖 Bot Commands')
+                .setDescription('`/ping` `/bal` `/rank` `/profile` `/shop` `/buy` `/sell` `/bossfight` `/leaderboard` `/wordle`');
+            return interaction.reply({ embeds: [embed] });
         }
-        return interaction.reply(`⚔️ ${damage} damage\n**HP:** \( {boss.health}/ \){boss.maxHealth}`);
-    }
 
-    if (commandName === 'leaderboard') {
-        const top = [...coins.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
-            .map(([id, amount], i) => `**#\( {i+1}** <@ \){id}> — 💰 **${amount}**`)
-            .join('\n');
-        return interaction.reply(top || 'No players yet');
+        if (commandName === 'bal') return interaction.reply(`💰 ${coins.get(userId) || 0} coins`);
+
+        if (commandName === 'rank') {
+            const info = getLevelInfo(xp.get(userId));
+            const bar = '█'.repeat(Math.floor((info.xpInLevel / info.xpRequired) * 10)) + '░'.repeat(10 - Math.floor((info.xpInLevel / info.xpRequired) * 10));
+            return interaction.reply(`**Level ${info.level}**\n${bar}`);
+        }
+
+        if (commandName === 'profile') {
+            const userCoins = coins.get(userId) || 0;
+            const info = getLevelInfo(xp.get(userId));
+            const inv = weapons.get(userId) || [];
+            const embed = new EmbedBuilder()
+                .setColor(0xff00ff)
+                .setTitle(`${interaction.user.username}'s Profile`)
+                .addFields(
+                    { name: 'Coins', value: `**${userCoins}**`, inline: true },
+                    { name: 'Level', value: `**${info.level}**`, inline: true },
+                    { name: 'Weapons', value: inv.length ? inv.map(w => `• ${w.name} (${w.rarity})`).join('\n') : 'None' }
+                );
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        if (commandName === 'shop') {
+            let text = '**Shop:**\n';
+            shop.forEach(i => text += `**${i.name}** — 💰 ${i.price} — ⚔️${i.damage} — ${i.rarity}\n`);
+            return interaction.reply(text);
+        }
+
+        if (commandName === 'buy') {
+            const itemName = interaction.options.getString('item').toLowerCase();
+            const item = shop.find(i => i.name.toLowerCase() === itemName);
+            if (!item) return interaction.reply('❌ Item not found');
+            if ((coins.get(userId) || 0) < item.price) return interaction.reply('❌ Not enough coins');
+
+            coins.set(userId, (coins.get(userId) || 0) - item.price);
+            if (!weapons.has(userId)) weapons.set(userId, []);
+            weapons.get(userId).push({ ...item });
+            saveData();
+            return interaction.reply(`🛒 Bought **${item.name}**`);
+        }
+
+        if (commandName === 'sell') {
+            const itemName = interaction.options.getString('item').toLowerCase();
+            const inv = weapons.get(userId) || [];
+            const index = inv.findIndex(i => i.name.toLowerCase() === itemName);
+            if (index === -1) return interaction.reply('❌ You don\'t have that item');
+
+            const item = inv.splice(index, 1)[0];
+            const sellPrice = Math.floor(item.price * 0.6);
+            coins.set(userId, (coins.get(userId) || 0) + sellPrice);
+            saveData();
+            return interaction.reply(`💰 Sold **${item.name}** for **${sellPrice}** coins`);
+        }
+
+        if (commandName === 'bossfight') {
+            if (!boss) boss = { name: 'Cosmic God', health: 6000, maxHealth: 6000 };
+            const inv = weapons.get(userId) || [];
+            const best = [...inv].sort((a, b) => b.damage - a.damage)[0] || { damage: 20 };
+            const damage = best.damage + Math.floor(Math.random() * 40);
+
+            boss.health -= damage;
+            coins.set(userId, (coins.get(userId) || 0) + Math.floor(damage / 2));
+            saveData();
+
+            if (boss.health <= 0) {
+                boss = null;
+                return interaction.reply('🎊 Boss defeated!');
+            }
+            return interaction.reply(`⚔️ ${damage} damage\n**HP:** ${boss.health}/${boss.maxHealth}`);
+        }
+
+        if (commandName === 'leaderboard') {
+            const top = [...coins.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([id, amount], i) => `**#${i+1}** <@${id}> — 💰 **${amount}**`)
+                .join('\n');
+            return interaction.reply(top || 'No players yet');
+        }
+    } catch (error) {
+        console.error('Command error:', error);
+        if (!interaction.replied) {
+            interaction.reply('❌ An error occurred').catch(console.error);
+        }
     }
 });
 

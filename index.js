@@ -64,8 +64,8 @@ setInterval(saveData, 300000); // 5 min
 
 // ─── OPENAI ─────────────────────────────────────
 const openai = new OpenAI({
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || '',
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '',
 });
 
 // ─── SHOP + RARITY ─────────────────────────────────
@@ -80,7 +80,7 @@ function xpForLevel(n) { return 5 * n * n + 50 * n + 100; }
 
 function getLevelInfo(totalXP) {
     let level = 0;
-    let remaining = totalXP || 0;
+    let remaining = Math.max(0, totalXP || 0);
     while (remaining >= xpForLevel(level)) {
         remaining -= xpForLevel(level);
         level++;
@@ -114,18 +114,27 @@ const client = new Client({
 });
 
 client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} online`);
+    try {
+        console.log(`✅ ${client.user?.tag || 'Bot'} online`);
 
-    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands }).catch(e => console.error('Command registration error:', e));
+    } catch (e) {
+        console.error('Ready event error:', e);
+    }
 });
 
 // ─── INTERACTIONS ─────────────────────────────────
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    const userId = interaction.user.id;
+    const userId = interaction.user?.id;
     const { commandName } = interaction;
+
+    if (!userId) {
+        console.warn('Invalid interaction: no user ID');
+        return;
+    }
 
     try {
         if (commandName === 'help') {
@@ -133,15 +142,15 @@ client.on('interactionCreate', async interaction => {
                 .setColor(0x00ff88)
                 .setTitle('🤖 Bot Commands')
                 .setDescription('`/ping` `/bal` `/rank` `/profile` `/shop` `/buy` `/sell` `/bossfight` `/leaderboard` `/wordle`');
-            return interaction.reply({ embeds: [embed] });
+            return interaction.reply({ embeds: [embed] }).catch(console.error);
         }
 
-        if (commandName === 'bal') return interaction.reply(`💰 ${coins.get(userId) || 0} coins`);
+        if (commandName === 'bal') return interaction.reply(`💰 ${coins.get(userId) || 0} coins`).catch(console.error);
 
         if (commandName === 'rank') {
             const info = getLevelInfo(xp.get(userId));
             const bar = '█'.repeat(Math.floor((info.xpInLevel / info.xpRequired) * 10)) + '░'.repeat(10 - Math.floor((info.xpInLevel / info.xpRequired) * 10));
-            return interaction.reply(`**Level ${info.level}**\n${bar}`);
+            return interaction.reply(`**Level ${info.level}**\n${bar}`).catch(console.error);
         }
 
         if (commandName === 'profile') {
@@ -150,71 +159,75 @@ client.on('interactionCreate', async interaction => {
             const inv = weapons.get(userId) || [];
             const embed = new EmbedBuilder()
                 .setColor(0xff00ff)
-                .setTitle(`${interaction.user.username}'s Profile`)
+                .setTitle(`${interaction.user?.username || 'User'}'s Profile`)
                 .addFields(
                     { name: 'Coins', value: `**${userCoins}**`, inline: true },
                     { name: 'Level', value: `**${info.level}**`, inline: true },
-                    { name: 'Weapons', value: inv.length ? inv.map(w => `• ${w.name} (${w.rarity})`).join('\n') : 'None' }
+                    { name: 'Weapons', value: inv.length ? inv.map(w => `• ${w?.name || 'Unknown'} (${w?.rarity || 'N/A'})`).join('\n') : 'None' }
                 );
-            return interaction.reply({ embeds: [embed] });
+            return interaction.reply({ embeds: [embed] }).catch(console.error);
         }
 
         if (commandName === 'shop') {
             let text = '**Shop:**\n';
-            shop.forEach(i => text += `**${i.name}** — 💰 ${i.price} — ⚔️${i.damage} — ${i.rarity}\n`);
-            return interaction.reply(text);
+            shop.forEach(i => text += `**${i?.name || 'Item'}** — 💰 ${i?.price || 0} — ⚔️${i?.damage || 0} — ${i?.rarity || 'N/A'}\n`);
+            return interaction.reply(text).catch(console.error);
         }
 
         if (commandName === 'buy') {
-            const itemName = interaction.options.getString('item').toLowerCase();
+            const itemName = interaction.options?.getString('item')?.toLowerCase() || '';
+            if (!itemName) return interaction.reply('❌ Invalid item').catch(console.error);
+
             const item = shop.find(i => i.name.toLowerCase() === itemName);
-            if (!item) return interaction.reply('❌ Item not found');
-            if ((coins.get(userId) || 0) < item.price) return interaction.reply('❌ Not enough coins');
+            if (!item) return interaction.reply('❌ Item not found').catch(console.error);
+            if ((coins.get(userId) || 0) < item.price) return interaction.reply('❌ Not enough coins').catch(console.error);
 
             coins.set(userId, (coins.get(userId) || 0) - item.price);
             if (!weapons.has(userId)) weapons.set(userId, []);
             weapons.get(userId).push({ ...item });
             saveData();
-            return interaction.reply(`🛒 Bought **${item.name}**`);
+            return interaction.reply(`🛒 Bought **${item.name}**`).catch(console.error);
         }
 
         if (commandName === 'sell') {
-            const itemName = interaction.options.getString('item').toLowerCase();
+            const itemName = interaction.options?.getString('item')?.toLowerCase() || '';
+            if (!itemName) return interaction.reply('❌ Invalid item').catch(console.error);
+
             const inv = weapons.get(userId) || [];
-            const index = inv.findIndex(i => i.name.toLowerCase() === itemName);
-            if (index === -1) return interaction.reply('❌ You don\'t have that item');
+            const index = inv.findIndex(i => i?.name?.toLowerCase() === itemName);
+            if (index === -1) return interaction.reply('❌ You don\'t have that item').catch(console.error);
 
             const item = inv.splice(index, 1)[0];
-            const sellPrice = Math.floor(item.price * 0.6);
+            const sellPrice = Math.max(1, Math.floor((item?.price || 100) * 0.6));
             coins.set(userId, (coins.get(userId) || 0) + sellPrice);
             saveData();
-            return interaction.reply(`💰 Sold **${item.name}** for **${sellPrice}** coins`);
+            return interaction.reply(`💰 Sold **${item?.name || 'Item'}** for **${sellPrice}** coins`).catch(console.error);
         }
 
         if (commandName === 'bossfight') {
             if (!boss) boss = { name: 'Cosmic God', health: 6000, maxHealth: 6000 };
             const inv = weapons.get(userId) || [];
-            const best = [...inv].sort((a, b) => b.damage - a.damage)[0] || { damage: 20 };
-            const damage = best.damage + Math.floor(Math.random() * 40);
+            const best = [...inv].sort((a, b) => (b?.damage || 0) - (a?.damage || 0))[0] || { damage: 20 };
+            const damage = Math.max(1, (best?.damage || 20) + Math.floor(Math.random() * 40));
 
-            boss.health -= damage;
+            boss.health = Math.max(0, boss.health - damage);
             coins.set(userId, (coins.get(userId) || 0) + Math.floor(damage / 2));
             saveData();
 
             if (boss.health <= 0) {
                 boss = null;
-                return interaction.reply('🎊 Boss defeated!');
+                return interaction.reply('🎊 Boss defeated!').catch(console.error);
             }
-            return interaction.reply(`⚔️ ${damage} damage\n**HP:** ${boss.health}/${boss.maxHealth}`);
+            return interaction.reply(`⚔️ ${damage} damage\n**HP:** ${boss.health}/${boss.maxHealth}`).catch(console.error);
         }
 
         if (commandName === 'leaderboard') {
             const top = [...coins.entries()]
-                .sort((a, b) => b[1] - a[1])
+                .sort((a, b) => (b[1] || 0) - (a[1] || 0))
                 .slice(0, 5)
-                .map(([id, amount], i) => `**#${i+1}** <@${id}> — 💰 **${amount}**`)
+                .map(([id, amount], i) => `**#${i+1}** <@${id}> — 💰 **${amount || 0}**`)
                 .join('\n');
-            return interaction.reply(top || 'No players yet');
+            return interaction.reply(top || 'No players yet').catch(console.error);
         }
     } catch (error) {
         console.error('Command error:', error);
@@ -223,5 +236,12 @@ client.on('interactionCreate', async interaction => {
         }
     }
 });
+
+// ─── GLOBAL ERROR HANDLERS ─────────────────
+process.on('unhandledRejection', error => console.error('Unhandled Rejection:', error));
+process.on('uncaughtException', error => console.error('Uncaught Exception:', error));
+
+client.on('error', error => console.error('Client error:', error));
+client.on('warn', warning => console.warn('Client warning:', warning));
 
 client.login(process.env.TOKEN).catch(console.error);

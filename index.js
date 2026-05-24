@@ -12,8 +12,7 @@ const {
     PermissionFlagsBits,
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle,
-    ComponentType
+    ButtonStyle
 } = require('discord.js');
 
 // ─── CONFIG ──────────────────────────────────────────────
@@ -21,7 +20,6 @@ const PREFIX = '!';
 const OWNER_ID = '1340069836096667859';
 const DATA_FILE = path.join(__dirname, 'data.json');
 
-// ─── CRASH PREVENTION: TRY-CATCH FOR ALL ASYNC OPS ─────
 // ─── DATA STORAGE ─────────────────────────────────────────
 const warnings = new Map();
 const xp = new Map();
@@ -34,7 +32,7 @@ let logsConfig = {};
 let boss = null;
 
 // ─── FNF GAME STATE ──────────────────────────────────────
-const fnfGames = new Map(); // userId → { score, streak, notes: [], current: 0 }
+const fnfGames = new Map();
 
 function loadData() {
     try {
@@ -43,12 +41,36 @@ function loadData() {
             return;
         }
         const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        if (raw?.warnings) for (const [k, v] of Object.entries(raw.warnings)) warnings.set(k, v);
-        if (raw?.xp) for (const [k, v] of Object.entries(raw.xp)) xp.set(k, v);
-        if (raw?.coins) for (const [k, v] of Object.entries(raw.coins)) coins.set(k, v);
-        if (raw?.weapons) for (const [k, v] of Object.entries(raw.weapons)) weapons.set(k, v);
-        if (raw?.staff) for (const id of raw.staff) staffSet.add(id);
-        if (raw?.autoResponses) for (const [k, v] of Object.entries(raw.autoResponses)) autoResponses.set(k, v);
+        if (raw?.warnings) {
+            for (const [k, v] of Object.entries(raw.warnings)) {
+                warnings.set(String(k), Number(v));
+            }
+        }
+        if (raw?.xp) {
+            for (const [k, v] of Object.entries(raw.xp)) {
+                xp.set(String(k), Number(v));
+            }
+        }
+        if (raw?.coins) {
+            for (const [k, v] of Object.entries(raw.coins)) {
+                coins.set(String(k), Number(v));
+            }
+        }
+        if (raw?.weapons) {
+            for (const [k, v] of Object.entries(raw.weapons)) {
+                weapons.set(String(k), Array.isArray(v) ? v : []);
+            }
+        }
+        if (raw?.staff) {
+            for (const id of raw.staff) {
+                staffSet.add(String(id));
+            }
+        }
+        if (raw?.autoResponses) {
+            for (const [k, v] of Object.entries(raw.autoResponses)) {
+                autoResponses.set(String(k), String(v));
+            }
+        }
         if (raw?.welcomeConfig) welcomeConfig = raw.welcomeConfig;
         if (raw?.logsConfig) logsConfig = raw.logsConfig;
         console.log('✅ Data loaded');
@@ -76,7 +98,7 @@ function saveData() {
 }
 
 loadData();
-setInterval(saveData, 300000); // Auto-save every 5 min
+setInterval(saveData, 300000);
 
 // ─── SHOP ────────────────────────────────────────────────
 const shop = [
@@ -87,12 +109,12 @@ const shop = [
 
 // ─── LEVEL SYSTEM ────────────────────────────────────────
 function xpForLevel(n) {
-    return 5 * n * n + 50 * n + 100;
+    return Math.max(1, 5 * n * n + 50 * n + 100);
 }
 
 function getLevelInfo(totalXP) {
     let level = 0;
-    let remaining = Math.max(0, totalXP || 0);
+    let remaining = Math.max(0, Number(totalXP) || 0);
     while (remaining >= xpForLevel(level)) {
         remaining -= xpForLevel(level);
         level++;
@@ -101,7 +123,7 @@ function getLevelInfo(totalXP) {
 }
 
 function buildBar(current, max) {
-    const percent = Math.max(0, Math.min(1, current / max));
+    const percent = Math.max(0, Math.min(1, Number(current) / Number(max)));
     const filled = Math.floor(percent * 10);
     return '█'.repeat(filled) + '░'.repeat(10 - filled);
 }
@@ -118,20 +140,26 @@ function generateFNFChart(difficulty = 'easy') {
     return chart;
 }
 
-function evaluateFNFHit(playerNote, correctNote) {
-    if (playerNote === correctNote) return { rating: 'Perfect!', points: 100 };
-    if (FNF_NOTES.indexOf(playerNote) !== -1) return { rating: 'Good!', points: 50 };
-    return { rating: 'Missed!', points: 0 };
-}
-
 // ─── SLASH COMMANDS ──────────────────────────────────────
 const slashCommands = [
-    new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
-    new SlashCommandBuilder().setName('help').setDescription('List all commands'),
-    new SlashCommandBuilder().setName('bal').setDescription('Check your coins'),
-    new SlashCommandBuilder().setName('rank').setDescription('Check your level'),
-    new SlashCommandBuilder().setName('profile').setDescription('View your profile'),
-    new SlashCommandBuilder().setName('shop').setDescription('View the shop'),
+    new SlashCommandBuilder()
+        .setName('ping')
+        .setDescription('Check bot latency'),
+    new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('List all commands'),
+    new SlashCommandBuilder()
+        .setName('bal')
+        .setDescription('Check your coins'),
+    new SlashCommandBuilder()
+        .setName('rank')
+        .setDescription('Check your level'),
+    new SlashCommandBuilder()
+        .setName('profile')
+        .setDescription('View your profile'),
+    new SlashCommandBuilder()
+        .setName('shop')
+        .setDescription('View the shop'),
     new SlashCommandBuilder()
         .setName('buy')
         .setDescription('Buy an item')
@@ -140,20 +168,26 @@ const slashCommands = [
         .setName('sell')
         .setDescription('Sell an item')
         .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name')),
-    new SlashCommandBuilder().setName('bossfight').setDescription('Fight the boss'),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 5 richest players'),
-    new SlashCommandBuilder().setName('fnf').setDescription('Play Friday Night Funkin!'),
+    new SlashCommandBuilder()
+        .setName('bossfight')
+        .setDescription('Fight the boss'),
+    new SlashCommandBuilder()
+        .setName('leaderboard')
+        .setDescription('Top 5 richest players'),
+    new SlashCommandBuilder()
+        .setName('fnf')
+        .setDescription('Play Friday Night Funkin!'),
     new SlashCommandBuilder()
         .setName('addxp')
         .setDescription('Add XP to user (staff)')
-        .addUserOption(o => o.setName('user').setRequired(true))
-        .addIntegerOption(o => o.setName('amount').setRequired(true)),
+        .addUserOption(o => o.setName('user').setRequired(true).setDescription('Target'))
+        .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount').setMinValue(1)),
     new SlashCommandBuilder()
         .setName('addcoins')
         .setDescription('Add coins to user (staff)')
-        .addUserOption(o => o.setName('user').setRequired(true))
-        .addIntegerOption(o => o.setName('amount').setRequired(true)),
-].map(c => c.toJSON());
+        .addUserOption(o => o.setName('user').setRequired(true).setDescription('Target'))
+        .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount').setMinValue(1)),
+];
 
 // ─── CLIENT SETUP ────────────────────────────────────────
 const client = new Client({
@@ -178,22 +212,24 @@ client.once('ready', async () => {
         }
 
         const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-        await rest.put(Routes.applicationCommands(client.user.id), { body: slashCommands }).catch(e => {
+        await rest.put(Routes.applicationCommands(client.user.id), { 
+            body: slashCommands.map(cmd => cmd.toJSON()) 
+        }).catch(e => {
             console.error('⚠️ Command registration error:', e?.message);
         });
         console.log('✅ Slash commands registered');
 
         // Announce online
         for (const guild of client.guilds.cache.values()) {
-            const channel = guild.systemChannel || guild.channels.cache
-                .filter(c => c.isTextBased())
-                .first();
-            if (channel) {
-                try {
+            try {
+                const channel = guild.systemChannel || guild.channels.cache
+                    .filter(c => c.isTextBased && c.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages))
+                    .first();
+                if (channel) {
                     await channel.send('🤖 **Bot Online!** Type `!help` or `/help`').catch(() => {});
-                } catch (e) {
-                    console.error('Announce error:', e?.message);
                 }
+            } catch (e) {
+                console.error('Announce error:', e?.message);
             }
         }
     } catch (e) {
@@ -206,7 +242,7 @@ client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
 
-        const userId = interaction.user?.id;
+        const userId = String(interaction.user?.id || '');
         if (!userId) return;
 
         const isOwner = userId === OWNER_ID;
@@ -224,14 +260,14 @@ client.on('interactionCreate', async interaction => {
                 const embed = new EmbedBuilder()
                     .setColor(0x00ff88)
                     .setTitle('🤖 Bot Commands')
-                    .setDescription('**Slash Commands:**\n`/ping` `/bal` `/rank` `/profile` `/shop` `/buy` `/sell` `/bossfight` `/leaderboard` `/fnf` `/addxp` `/addcoins`\n\n**Prefix Commands (use !):**\n`!daily` `!rob` `!fight` `!steal` `!gamble` `!fnf`');
+                    .setDescription('**Slash Commands:**\n`/ping` `/bal` `/rank` `/profile` `/shop` `/buy` `/sell` `/bossfight` `/leaderboard` `/fnf` `/addxp` `/addcoins`\n\n**Prefix Commands (use !):**\n`!daily` `!rob` `!fight` `!steal` `!gamble` `!fnf` `!help`');
                 await interaction.reply({ embeds: [embed] });
                 return;
             }
 
             // BAL
             if (interaction.commandName === 'bal') {
-                const balance = coins.get(userId) || 0;
+                const balance = Number(coins.get(userId)) || 0;
                 await interaction.reply({ content: `💰 **${balance}** coins`, ephemeral: true });
                 return;
             }
@@ -241,7 +277,7 @@ client.on('interactionCreate', async interaction => {
                 const info = getLevelInfo(xp.get(userId));
                 const bar = buildBar(info.xpInLevel, info.xpRequired);
                 await interaction.reply({
-                    content: `**Level ${info.level}**\n${bar} (${info.xpInLevel}/${info.xpRequired})`,
+                    content: `**Level ${info.level}**\n${bar} (${Math.floor(info.xpInLevel)}/${info.xpRequired})`,
                     ephemeral: true
                 });
                 return;
@@ -249,17 +285,17 @@ client.on('interactionCreate', async interaction => {
 
             // PROFILE
             if (interaction.commandName === 'profile') {
-                const userCoins = coins.get(userId) || 0;
+                const userCoins = Number(coins.get(userId)) || 0;
                 const info = getLevelInfo(xp.get(userId));
                 const inv = weapons.get(userId) || [];
                 const embed = new EmbedBuilder()
                     .setColor(0xff00ff)
-                    .setTitle(`${interaction.user?.username}'s Profile`)
+                    .setTitle(`${interaction.user?.username || 'User'}'s Profile`)
                     .setThumbnail(interaction.user?.displayAvatarURL())
                     .addFields(
                         { name: 'Coins', value: `**${userCoins}**`, inline: true },
                         { name: 'Level', value: `**${info.level}**`, inline: true },
-                        { name: 'Inventory', value: inv.length ? inv.map(w => `• ${w?.name} (${w?.rarity})`).join('\n') : 'Empty' }
+                        { name: 'Weapons', value: inv.length ? inv.map(w => `• ${w?.name || 'Item'} (${w?.rarity || 'N/A'})`).join('\n') : 'Empty' }
                     );
                 await interaction.reply({ embeds: [embed] });
                 return;
@@ -269,7 +305,7 @@ client.on('interactionCreate', async interaction => {
             if (interaction.commandName === 'shop') {
                 let text = '**🛍️ Shop:**\n\n';
                 shop.forEach(i => {
-                    text += `**${i.name}** — 💰 ${i.price} — ⚔️ ${i.damage} — ${i.rarity}\n`;
+                    text += `**${String(i.name)}** — 💰 ${Number(i.price)} — ⚔️ ${Number(i.damage)} — ${String(i.rarity)}\n`;
                 });
                 text += '\nUse `/buy <item>` to purchase!';
                 await interaction.reply({ content: text, ephemeral: true });
@@ -278,20 +314,20 @@ client.on('interactionCreate', async interaction => {
 
             // BUY
             if (interaction.commandName === 'buy') {
-                const itemName = interaction.options?.getString('item')?.toLowerCase() || '';
-                const item = shop.find(i => i.name.toLowerCase() === itemName);
+                const itemName = String(interaction.options?.getString('item') || '').toLowerCase();
+                const item = shop.find(i => String(i.name).toLowerCase() === itemName);
                 if (!item) {
                     await interaction.reply({ content: '❌ Item not found', ephemeral: true });
                     return;
                 }
 
-                const userCoins = coins.get(userId) || 0;
-                if (userCoins < item.price) {
+                const userCoins = Number(coins.get(userId)) || 0;
+                if (userCoins < Number(item.price)) {
                     await interaction.reply({ content: `❌ Not enough coins (need ${item.price}, have ${userCoins})`, ephemeral: true });
                     return;
                 }
 
-                coins.set(userId, userCoins - item.price);
+                coins.set(userId, userCoins - Number(item.price));
                 if (!weapons.has(userId)) weapons.set(userId, []);
                 weapons.get(userId).push({ ...item });
                 saveData();
@@ -301,19 +337,19 @@ client.on('interactionCreate', async interaction => {
 
             // SELL
             if (interaction.commandName === 'sell') {
-                const itemName = interaction.options?.getString('item')?.toLowerCase() || '';
+                const itemName = String(interaction.options?.getString('item') || '').toLowerCase();
                 const inv = weapons.get(userId) || [];
-                const index = inv.findIndex(i => i?.name?.toLowerCase() === itemName);
+                const index = inv.findIndex(i => String(i?.name || '').toLowerCase() === itemName);
                 if (index === -1) {
                     await interaction.reply({ content: '❌ You don\'t have that item', ephemeral: true });
                     return;
                 }
 
                 const item = inv.splice(index, 1)[0];
-                const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
-                coins.set(userId, (coins.get(userId) || 0) + sellPrice);
+                const sellPrice = Math.max(1, Math.floor((Number(item?.price) || 100) * 0.6));
+                coins.set(userId, (Number(coins.get(userId)) || 0) + sellPrice);
                 saveData();
-                await interaction.reply({ content: `💰 Sold **${item.name}** for **${sellPrice}** coins!`, ephemeral: true });
+                await interaction.reply({ content: `💰 Sold **${item?.name || 'Item'}** for **${sellPrice}** coins!`, ephemeral: true });
                 return;
             }
 
@@ -323,16 +359,16 @@ client.on('interactionCreate', async interaction => {
                     boss = { name: '👹 Shadow Demon', health: 3000, maxHealth: 3000 };
                 }
                 const inv = weapons.get(userId) || [];
-                const best = inv.sort((a, b) => (b?.damage || 0) - (a?.damage || 0))[0] || { damage: 20 };
-                const damage = Math.max(1, best.damage + Math.floor(Math.random() * 50));
+                const best = [...inv].sort((a, b) => (Number(b?.damage) || 0) - (Number(a?.damage) || 0))[0] || { damage: 20 };
+                const damage = Math.max(1, Number(best.damage) + Math.floor(Math.random() * 50));
 
-                boss.health -= damage;
-                coins.set(userId, (coins.get(userId) || 0) + Math.floor(damage / 2));
+                boss.health = Math.max(0, boss.health - damage);
+                coins.set(userId, (Number(coins.get(userId)) || 0) + Math.floor(damage / 2));
                 saveData();
 
                 if (boss.health <= 0) {
                     const reward = Math.floor(damage * 2);
-                    coins.set(userId, (coins.get(userId) || 0) + reward);
+                    coins.set(userId, (Number(coins.get(userId)) || 0) + reward);
                     saveData();
                     boss = null;
                     await interaction.reply({ content: `🎊 **Boss defeated!** Earned **${reward}** coins!` });
@@ -346,7 +382,7 @@ client.on('interactionCreate', async interaction => {
             // LEADERBOARD
             if (interaction.commandName === 'leaderboard') {
                 const top = [...coins.entries()]
-                    .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+                    .sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0))
                     .slice(0, 5)
                     .map(([id, amt], i) => `**#${i + 1}** <@${id}> — 💰 **${amt}**`)
                     .join('\n');
@@ -381,7 +417,7 @@ client.on('interactionCreate', async interaction => {
 
                 collector.on('collect', async btn => {
                     if (btn.user.id !== userId) {
-                        await btn.reply({ content: 'This is not your game!', ephemeral: true });
+                        await btn.reply({ content: 'This is not your game!', ephemeral: true }).catch(() => {});
                         return;
                     }
 
@@ -396,8 +432,8 @@ client.on('interactionCreate', async interaction => {
                         game.current++;
 
                         if (game.current >= chart.length) {
-                            coins.set(userId, (coins.get(userId) || 0) + game.score);
-                            xp.set(userId, (xp.get(userId) || 0) + game.score);
+                            coins.set(userId, (Number(coins.get(userId)) || 0) + game.score);
+                            xp.set(userId, (Number(xp.get(userId)) || 0) + game.score);
                             saveData();
                             fnfGames.delete(userId);
                             collector.stop();
@@ -410,7 +446,7 @@ client.on('interactionCreate', async interaction => {
                                     { name: 'Coins Earned', value: `**${game.score}**`, inline: true },
                                     { name: 'XP Earned', value: `**${game.score}**`, inline: true }
                                 );
-                            await msg.edit({ embeds: [winEmbed], components: [] });
+                            await msg.edit({ embeds: [winEmbed], components: [] }).catch(() => {});
                             return;
                         }
 
@@ -420,10 +456,10 @@ client.on('interactionCreate', async interaction => {
                             .setTitle('🎵 Friday Night Funkin\'')
                             .setDescription(`**Current Note:** ${chart[game.current]}\n\n**Score:** ${game.score}\n**Streak:** ${game.streak}`)
                             .setFooter({ text: `Note ${game.current + 1}/${chart.length}` });
-                        await msg.edit({ embeds: [updatedEmbed] });
+                        await msg.edit({ embeds: [updatedEmbed] }).catch(() => {});
                     } else {
                         game.streak = 0;
-                        coins.set(userId, Math.max(0, (coins.get(userId) || 0) - 50));
+                        coins.set(userId, Math.max(0, (Number(coins.get(userId)) || 0) - 50));
                         saveData();
                     }
 
@@ -453,9 +489,10 @@ client.on('interactionCreate', async interaction => {
                 const amount = interaction.options?.getInteger('amount');
                 if (!target || !amount) return;
 
-                xp.set(target.id, (xp.get(target.id) || 0) + amount);
+                const tid = String(target.id);
+                xp.set(tid, (Number(xp.get(tid)) || 0) + Number(amount));
                 saveData();
-                await interaction.reply({ content: `✅ Added **${amount}** XP to <@${target.id}>`, ephemeral: true });
+                await interaction.reply({ content: `✅ Added **${amount}** XP to <@${tid}>`, ephemeral: true });
                 return;
             }
 
@@ -469,9 +506,10 @@ client.on('interactionCreate', async interaction => {
                 const amount = interaction.options?.getInteger('amount');
                 if (!target || !amount) return;
 
-                coins.set(target.id, (coins.get(target.id) || 0) + amount);
+                const tid = String(target.id);
+                coins.set(tid, (Number(coins.get(tid)) || 0) + Number(amount));
                 saveData();
-                await interaction.reply({ content: `✅ Added **${amount}** coins to <@${target.id}>`, ephemeral: true });
+                await interaction.reply({ content: `✅ Added **${amount}** coins to <@${tid}>`, ephemeral: true });
                 return;
             }
 
@@ -482,7 +520,7 @@ client.on('interactionCreate', async interaction => {
                     await interaction.reply({ content: '❌ Command failed', ephemeral: true });
                 }
             } catch (e) {
-                console.error('Failed to send error:', e?.message);
+                console.error('Failed to reply:', e?.message);
             }
         }
 
@@ -500,7 +538,7 @@ client.on('messageCreate', async message => {
 
         const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
         const cmd = args.shift().toLowerCase();
-        const userId = message.author.id;
+        const userId = String(message.author.id);
         const isOwner = userId === OWNER_ID;
         const isStaff = staffSet.has(userId) || isOwner;
 
@@ -527,8 +565,8 @@ client.on('messageCreate', async message => {
                 }
 
                 const reward = Math.floor(Math.random() * 500) + 200;
-                coins.set(userId, (coins.get(userId) || 0) + reward);
-                xp.set(userId, (xp.get(userId) || 0) + 50);
+                coins.set(userId, (Number(coins.get(userId)) || 0) + reward);
+                xp.set(userId, (Number(xp.get(userId)) || 0) + 50);
                 cooldowns.set(`daily_${userId}`, now);
                 saveData();
 
@@ -540,12 +578,13 @@ client.on('messageCreate', async message => {
                 const target = message.mentions.first();
                 if (!target) return message.reply('❌ Mention someone to rob!');
 
-                const targetCoins = coins.get(target.id) || 0;
+                const tid = String(target.id);
+                const targetCoins = Number(coins.get(tid)) || 0;
                 if (targetCoins < 100) return message.reply('❌ Target has less than 100 coins!');
 
                 const stolen = Math.floor(Math.random() * targetCoins * 0.5);
-                coins.set(target.id, targetCoins - stolen);
-                coins.set(userId, (coins.get(userId) || 0) + stolen);
+                coins.set(tid, targetCoins - stolen);
+                coins.set(userId, (Number(coins.get(userId)) || 0) + stolen);
                 saveData();
 
                 return message.reply(`💰 Robbed **${target.username}** for **${stolen}** coins!`);
@@ -554,7 +593,7 @@ client.on('messageCreate', async message => {
             // !gamble
             if (cmd === 'gamble') {
                 const amount = parseInt(args[0]) || 100;
-                const userCoins = coins.get(userId) || 0;
+                const userCoins = Number(coins.get(userId)) || 0;
                 if (userCoins < amount) return message.reply('❌ Not enough coins!');
 
                 const won = Math.random() > 0.5;
@@ -577,8 +616,9 @@ client.on('messageCreate', async message => {
                 const p1Dmg = Math.floor(Math.random() * 50) + 10;
                 const p2Dmg = Math.floor(Math.random() * 50) + 10;
                 const winner = p1Dmg > p2Dmg ? message.author : target;
+                const wid = String(winner.id);
 
-                coins.set(winner.id, (coins.get(winner.id) || 0) + 100);
+                coins.set(wid, (Number(coins.get(wid)) || 0) + 100);
                 saveData();
 
                 return message.reply(`⚔️ **${message.author.username}** (${p1Dmg}) vs **${target.username}** (${p2Dmg})\n🏆 ${winner.username} wins **100 coins**!`);
@@ -589,7 +629,8 @@ client.on('messageCreate', async message => {
                 const target = message.mentions.first();
                 if (!target) return message.reply('❌ Mention someone!');
 
-                const inv = weapons.get(target.id) || [];
+                const tid = String(target.id);
+                const inv = weapons.get(tid) || [];
                 if (!inv.length) return message.reply('❌ They have no weapons!');
 
                 const stolen = inv.splice(Math.floor(Math.random() * inv.length), 1)[0];
@@ -597,7 +638,7 @@ client.on('messageCreate', async message => {
                 weapons.get(userId).push(stolen);
                 saveData();
 
-                return message.reply(`🗡️ Stole **${stolen.name}** from **${target.username}**!`);
+                return message.reply(`🗡️ Stole **${stolen?.name || 'weapon'}** from **${target.username}**!`);
             }
 
             // !fnf
@@ -617,7 +658,7 @@ client.on('messageCreate', async message => {
                     .setColor(0xff00ff)
                     .setTitle('🎵 FNF Rhythm Battle')
                     .setDescription(`**Current:** ${chart[0]}\n**Score:** 0 | **Streak:** 0`)
-                    .setFooter({ text: 'Note 1/' + chart.length });
+                    .setFooter({ text: `Note 1/${chart.length}` });
 
                 const msg = await message.reply({ embeds: [embed], components: [buttons] });
 
@@ -626,11 +667,16 @@ client.on('messageCreate', async message => {
 
                 collector.on('collect', async btn => {
                     if (btn.user.id !== userId) {
-                        await btn.reply({ content: 'Not your game!', ephemeral: true });
+                        await btn.reply({ content: 'Not your game!', ephemeral: true }).catch(() => {});
                         return;
                     }
 
-                    const noteMap = { [`fnf_p_left_${userId}`]: '⬅️', [`fnf_p_down_${userId}`]: '⬇️', [`fnf_p_up_${userId}`]: '⬆️', [`fnf_p_right_${userId}`]: '➡️' };
+                    const noteMap = { 
+                        [`fnf_p_left_${userId}`]: '⬅️', 
+                        [`fnf_p_down_${userId}`]: '⬇️', 
+                        [`fnf_p_up_${userId}`]: '⬆️', 
+                        [`fnf_p_right_${userId}`]: '➡️' 
+                    };
                     const playerNote = noteMap[btn.customId];
                     const expected = chart[game.current];
 
@@ -641,8 +687,8 @@ client.on('messageCreate', async message => {
                         game.current++;
 
                         if (game.current >= chart.length) {
-                            coins.set(userId, (coins.get(userId) || 0) + game.score);
-                            xp.set(userId, (xp.get(userId) || 0) + game.score);
+                            coins.set(userId, (Number(coins.get(userId)) || 0) + game.score);
+                            xp.set(userId, (Number(xp.get(userId)) || 0) + game.score);
                             saveData();
                             fnfGames.delete(userId);
                             collector.stop();
@@ -651,7 +697,7 @@ client.on('messageCreate', async message => {
                                 .setColor(0x00ff00)
                                 .setTitle('🎊 Perfect!')
                                 .setDescription(`**Score:** ${game.score}\n**Coins:** +${game.score}\n**XP:** +${game.score}`);
-                            await msg.edit({ embeds: [win], components: [] });
+                            await msg.edit({ embeds: [win], components: [] }).catch(() => {});
                             return;
                         }
 
@@ -661,7 +707,7 @@ client.on('messageCreate', async message => {
                             .setTitle('🎵 FNF Rhythm Battle')
                             .setDescription(`**Current:** ${chart[game.current]}\n**Score:** ${game.score} | **Streak:** ${game.streak}`)
                             .setFooter({ text: `Note ${game.current + 1}/${chart.length}` });
-                        await msg.edit({ embeds: [upd] });
+                        await msg.edit({ embeds: [upd] }).catch(() => {});
                     } else {
                         game.streak = 0;
                     }

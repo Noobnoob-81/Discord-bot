@@ -1,0 +1,102 @@
+{
+  "songs": [
+    {
+      "id": "tutorial",
+      "name": "Tutorial",
+      "artist": "Boyfriend",
+      "bpm": 120,
+      "duration": 30,
+      "difficulties": {
+        "easy": {
+          "notes": "LURD LURD DURL DURL LURD LURD DURL LURD",
+          "noteSpeed": 1,
+          "noteCount": 8,
+          "reactionTime": 200,
+          "healthDrain": 0.02,
+          "scoreMultiplier": 1
+        },
+        "medium": {
+          "notes": "LURD LURD DURL DURL LURD LURD DURL LURD LURD DURL LURD DURL",
+          "noteSpeed": 1.3,
+          "noteCount": 12,
+          "reactionTime": 150,
+          "healthDrain": 0.04,
+          "scoreMultiplier": 1.5
+        },
+        "hard": {
+          "notes": "LURD LURD DURL DURL LURD LURD DURL LURD LURD DURL LURD DURL LURD DURL LURD LURD",
+          "noteSpeed": 1.6,
+          "noteCount": 16,
+          "reactionTime": 100,
+          "healthDrain": 0.06,
+          "scoreMultiplier": 2
+        },
+        "erect": {
+          "notes": "LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL",
+          "noteSpeed": 2,
+          "noteCount": 20,
+          "reactionTime": 75,
+          "healthDrain": 0.08,
+          "scoreMultiplier": 3
+        },
+        "nightmare": {
+          "notes": "LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL",
+          "noteSpeed": 2.5,
+          "noteCount": 24,
+          "reactionTime": 50,
+          "healthDrain": 0.12,
+          "scoreMultiplier": 5
+        }
+      }
+    },
+    {
+      "id": "dadbattle",
+      "name": "Dad Battle",
+      "artist": "Daddy Dearest",
+      "bpm": 102,
+      "duration": 45,
+      "difficulties": {
+        "easy": {
+          "notes": "UD UD LR LR UD UD LR LR",
+          "noteSpeed": 1.1,
+          "noteCount": 8,
+          "reactionTime": 190,
+          "healthDrain": 0.025,
+          "scoreMultiplier": 1.2
+        },
+        "medium": {
+          "notes": "UD UD LR LR UD UD LR LR LURD DURL LURD DURL",
+          "noteSpeed": 1.4,
+          "noteCount": 12,
+          "reactionTime": 140,
+          "healthDrain": 0.05,
+          "scoreMultiplier": 1.8
+        },
+        "hard": {
+          "notes": "LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL",
+          "noteSpeed": 1.7,
+          "noteCount": 16,
+          "reactionTime": 90,
+          "healthDrain": 0.07,
+          "scoreMultiplier": 2.5
+        },
+        "erect": {
+          "notes": "LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL LURD DURL",
+          "noteSpeed": 2.1,
+          "noteCount": 22,
+          "reactionTime": 70,
+          "healthDrain": 0.09,
+          "scoreMultiplier": 3.5
+        },
+        "nightmare": {
+          "notes": "UDLR DURL LURD URLD DLRU ULRD RDLU RLDU UDLR DURL LURD URLD DLRU ULRD",
+          "noteSpeed": 2.6,
+          "noteCount": 28,
+          "reactionTime": 45,
+          "healthDrain": 0.14,
+          "scoreMultiplier": 5.5
+        }
+      }
+    }
+  ]
+}

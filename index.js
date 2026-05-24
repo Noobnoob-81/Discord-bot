@@ -12,7 +12,12 @@ const {
     PermissionFlagsBits,
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    WebhookClient,
+    ChannelType,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } = require('discord.js');
 
 // ─── CONFIG ──────────────────────────────────────────────
@@ -33,6 +38,9 @@ let boss = null;
 
 // ─── FNF GAME STATE ──────────────────────────────────────
 const fnfGames = new Map();
+
+// ─── IMPERSONATE STATE ───────────────────────────────────
+const activeImpersonations = new Map();
 
 function loadData() {
     try {
@@ -100,11 +108,11 @@ function saveData() {
 loadData();
 setInterval(saveData, 300000);
 
-// ─── SHOP ────────────────────────────────────────────────
+// ─── SHOP (HARDER TO GET LEGENDARY) ──────────────────────
 const shop = [
     { name: 'Rusty Sword', damage: 25, price: 500, rarity: 'Common' },
-    { name: 'Shadow Blade', damage: 80, price: 5000, rarity: 'Rare' },
-    { name: 'Galaxy Hammer', damage: 150, price: 25000, rarity: 'Legendary' }
+    { name: 'Shadow Blade', damage: 80, price: 8000, rarity: 'Rare' },
+    { name: 'Galaxy Hammer', damage: 150, price: 50000, rarity: 'Legendary' }
 ];
 
 // ─── LEVEL SYSTEM ────────────────────────────────────────
@@ -140,26 +148,42 @@ function generateFNFChart(difficulty = 'easy') {
     return chart;
 }
 
+// ─── WORDLE ──────────────────────────────────────────────
+const wordleGames = new Map();
+const WORDLE_WORDS = [
+    'apple','brave','chess','drive','eight','flair','grace','heart','ivory','jewel',
+    'knack','lemon','maple','noble','ocean','piano','quest','raven','solar','tiger',
+    'ultra','vivid','wheat','xenon','yacht','zebra','adore','blaze','coral','daisy',
+    'ember','flute','gleam','haste','inlet','joker','karma','lance','moose','nerve',
+    'opera','prism','quail','reign','spine','torch','usher','vapor','waltz','xeric',
+    'yield','zonal','amber','boost','crisp','delta','elbow','frost','globe','hover',
+];
+
+function evaluateGuess(word, guess) {
+    const result = Array(5).fill('⬛');
+    const wordArr = word.split('');
+    const used = Array(5).fill(false);
+    const gArr = guess.split('');
+    for (let i = 0; i < 5; i++) {
+        if (gArr[i] === wordArr[i]) { result[i] = '🟩'; used[i] = true; gArr[i] = null; }
+    }
+    for (let i = 0; i < 5; i++) {
+        if (!gArr[i]) continue;
+        for (let j = 0; j < 5; j++) {
+            if (!used[j] && gArr[i] === wordArr[j]) { result[i] = '🟨'; used[j] = true; break; }
+        }
+    }
+    return result;
+}
+
 // ─── SLASH COMMANDS ──────────────────────────────────────
 const slashCommands = [
-    new SlashCommandBuilder()
-        .setName('ping')
-        .setDescription('Check bot latency'),
-    new SlashCommandBuilder()
-        .setName('help')
-        .setDescription('List all commands'),
-    new SlashCommandBuilder()
-        .setName('bal')
-        .setDescription('Check your coins'),
-    new SlashCommandBuilder()
-        .setName('rank')
-        .setDescription('Check your level'),
-    new SlashCommandBuilder()
-        .setName('profile')
-        .setDescription('View your profile'),
-    new SlashCommandBuilder()
-        .setName('shop')
-        .setDescription('View the shop'),
+    new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
+    new SlashCommandBuilder().setName('help').setDescription('List all commands'),
+    new SlashCommandBuilder().setName('bal').setDescription('Check your coins'),
+    new SlashCommandBuilder().setName('rank').setDescription('Check your level'),
+    new SlashCommandBuilder().setName('profile').setDescription('View your profile'),
+    new SlashCommandBuilder().setName('shop').setDescription('View the shop'),
     new SlashCommandBuilder()
         .setName('buy')
         .setDescription('Buy an item')
@@ -168,25 +192,53 @@ const slashCommands = [
         .setName('sell')
         .setDescription('Sell an item')
         .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name')),
-    new SlashCommandBuilder()
-        .setName('bossfight')
-        .setDescription('Fight the boss'),
-    new SlashCommandBuilder()
-        .setName('leaderboard')
-        .setDescription('Top 5 richest players'),
+    new SlashCommandBuilder().setName('bossfight').setDescription('Fight the boss'),
+    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 5 richest players'),
     new SlashCommandBuilder()
         .setName('fnf')
-        .setDescription('Play Friday Night Funkin!'),
+        .setDescription('Play Friday Night Funkin! (with timer)'),
+    new SlashCommandBuilder()
+        .setName('wordle')
+        .setDescription('Play Wordle - Guess the 5-letter word')
+        .addStringOption(o => o.setName('guess').setRequired(true).setMinLength(5).setMaxLength(5)),
     new SlashCommandBuilder()
         .setName('addxp')
         .setDescription('Add XP to user (staff)')
-        .addUserOption(o => o.setName('user').setRequired(true).setDescription('Target'))
-        .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount').setMinValue(1)),
+        .addUserOption(o => o.setName('user').setRequired(true))
+        .addIntegerOption(o => o.setName('amount').setRequired(true).setMinValue(1)),
     new SlashCommandBuilder()
         .setName('addcoins')
         .setDescription('Add coins to user (staff)')
-        .addUserOption(o => o.setName('user').setRequired(true).setDescription('Target'))
-        .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount').setMinValue(1)),
+        .addUserOption(o => o.setName('user').setRequired(true))
+        .addIntegerOption(o => o.setName('amount').setRequired(true).setMinValue(1)),
+    new SlashCommandBuilder()
+        .setName('logs')
+        .setDescription('(staff) Set mod-log channel')
+        .addChannelOption(o => o.setName('channel').setRequired(true).addChannelTypes(ChannelType.GuildText)),
+    new SlashCommandBuilder()
+        .setName('welcome')
+        .setDescription('(staff) Set up welcome system')
+        .addChannelOption(o => o.setName('channel').setRequired(true).addChannelTypes(ChannelType.GuildText))
+        .addRoleOption(o => o.setName('role').setRequired(false)),
+    new SlashCommandBuilder()
+        .setName('addresponse')
+        .setDescription('(owner) Add auto-response')
+        .addStringOption(o => o.setName('trigger').setRequired(true))
+        .addStringOption(o => o.setName('response').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('removeresponse')
+        .setDescription('(owner) Remove auto-response')
+        .addStringOption(o => o.setName('trigger').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('listresponses')
+        .setDescription('(owner) List all auto-responses'),
+    new SlashCommandBuilder()
+        .setName('impersonate')
+        .setDescription('(staff) Impersonate a user with AI replies')
+        .addUserOption(o => o.setName('user').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('stopimpersonate')
+        .setDescription('(staff) Stop impersonating in this channel'),
 ];
 
 // ─── CLIENT SETUP ────────────────────────────────────────
@@ -217,16 +269,15 @@ client.once('ready', async () => {
         }).catch(e => {
             console.error('⚠️ Command registration error:', e?.message);
         });
-        console.log('✅ Slash commands registered');
+        console.log('✅ Slash commands registered (v1.5)');
 
-        // Announce online
         for (const guild of client.guilds.cache.values()) {
             try {
                 const channel = guild.systemChannel || guild.channels.cache
                     .filter(c => c.isTextBased && c.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages))
                     .first();
                 if (channel) {
-                    await channel.send('🤖 **Bot Online!** Type `!help` or `/help`').catch(() => {});
+                    await channel.send('🤖 **Bot v1.5 Online!** All features restored + FNF with timer + harder economy!').catch(() => {});
                 }
             } catch (e) {
                 console.error('Announce error:', e?.message);
@@ -240,6 +291,30 @@ client.once('ready', async () => {
 // ─── SLASH COMMAND HANDLER ───────────────────────────────
 client.on('interactionCreate', async interaction => {
     try {
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId.startsWith('welcome_modal_')) {
+                const guildId = interaction.customId.replace('welcome_modal_', '');
+                const message = interaction.fields.getTextInputValue('welcome_msg');
+                const imageUrl = interaction.fields.getTextInputValue('welcome_img').trim() || null;
+
+                const cfg = welcomeConfig[guildId] || {};
+                welcomeConfig[guildId] = { ...cfg, message, imageUrl };
+                saveData();
+
+                const preview = new EmbedBuilder()
+                    .setColor(0x57F287)
+                    .setTitle('✅ Welcome system configured!')
+                    .addFields(
+                        { name: 'Channel', value: `<#${welcomeConfig[guildId].channelId}>`, inline: true },
+                        { name: 'Role', value: welcomeConfig[guildId].roleId ? `<@&${welcomeConfig[guildId].roleId}>` : 'None', inline: true },
+                        { name: 'Message', value: message }
+                    );
+                if (imageUrl) preview.setImage(imageUrl);
+                return interaction.reply({ embeds: [preview], ephemeral: true });
+            }
+            return;
+        }
+
         if (!interaction.isChatInputCommand()) return;
 
         const userId = String(interaction.user?.id || '');
@@ -259,8 +334,15 @@ client.on('interactionCreate', async interaction => {
             if (interaction.commandName === 'help') {
                 const embed = new EmbedBuilder()
                     .setColor(0x00ff88)
-                    .setTitle('🤖 Bot Commands')
-                    .setDescription('**Slash Commands:**\n`/ping` `/bal` `/rank` `/profile` `/shop` `/buy` `/sell` `/bossfight` `/leaderboard` `/fnf` `/addxp` `/addcoins`\n\n**Prefix Commands (use !):**\n`!daily` `!rob` `!fight` `!steal` `!gamble` `!fnf` `!help`');
+                    .setTitle('🤖 Bot v1.5 Commands')
+                    .addFields(
+                        { name: 'Economy', value: '`/bal` `/shop` `/buy` `/sell` `/leaderboard`', inline: true },
+                        { name: 'Games', value: '`/fnf` `/wordle` `/bossfight`', inline: true },
+                        { name: 'Levels', value: '`/rank` `/profile`', inline: true },
+                        { name: 'Staff', value: '`/addxp` `/addcoins` `/logs` `/welcome` `/impersonate` `/stopimpersonate`', inline: true },
+                        { name: 'Owner', value: '`/addresponse` `/removeresponse` `/listresponses`', inline: true },
+                        { name: 'Prefix (!):', value: '`!daily` `!rob` `!fight` `!gamble` `!steal` `!fnf` `!ragebait` `!domain` `!hollow` `!infinity` `!unleash` `!bankai` `!gear5` `!sharingan` `!attackontitan`', inline: false }
+                    );
                 await interaction.reply({ embeds: [embed] });
                 return;
             }
@@ -277,7 +359,7 @@ client.on('interactionCreate', async interaction => {
                 const info = getLevelInfo(xp.get(userId));
                 const bar = buildBar(info.xpInLevel, info.xpRequired);
                 await interaction.reply({
-                    content: `**Level ${info.level}**\n${bar} (${Math.floor(info.xpInLevel)}/${info.xpRequired})`,
+                    content: `⭐ **Level ${info.level}**\n${bar}\n${Math.floor(info.xpInLevel)}/${info.xpRequired} XP`,
                     ephemeral: true
                 });
                 return;
@@ -295,6 +377,7 @@ client.on('interactionCreate', async interaction => {
                     .addFields(
                         { name: 'Coins', value: `**${userCoins}**`, inline: true },
                         { name: 'Level', value: `**${info.level}**`, inline: true },
+                        { name: 'Total XP', value: `**${Math.floor(info.totalXP || 0)}**`, inline: true },
                         { name: 'Weapons', value: inv.length ? inv.map(w => `• ${w?.name || 'Item'} (${w?.rarity || 'N/A'})`).join('\n') : 'Empty' }
                     );
                 await interaction.reply({ embeds: [embed] });
@@ -369,9 +452,10 @@ client.on('interactionCreate', async interaction => {
                 if (boss.health <= 0) {
                     const reward = Math.floor(damage * 2);
                     coins.set(userId, (Number(coins.get(userId)) || 0) + reward);
+                    xp.set(userId, (Number(xp.get(userId)) || 0) + reward);
                     saveData();
                     boss = null;
-                    await interaction.reply({ content: `🎊 **Boss defeated!** Earned **${reward}** coins!` });
+                    await interaction.reply({ content: `🎊 **Boss defeated!** Earned **${reward}** coins & XP!` });
                     return;
                 }
                 const bar = buildBar(boss.health, boss.maxHealth);
@@ -390,10 +474,10 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            // FNF SLASH COMMAND
+            // FNF WITH TIMER
             if (interaction.commandName === 'fnf') {
                 const chart = generateFNFChart('easy');
-                const game = { score: 0, streak: 0, notes: chart, current: 0 };
+                const game = { score: 0, streak: 0, notes: chart, current: 0, startTime: Date.now() };
                 fnfGames.set(userId, game);
 
                 const buttons = new ActionRowBuilder().addComponents(
@@ -403,11 +487,10 @@ client.on('interactionCreate', async interaction => {
                     new ButtonBuilder().setCustomId('fnf_right').setLabel('➡️').setStyle(ButtonStyle.Primary)
                 );
 
-                const nextNote = chart[0];
                 const embed = new EmbedBuilder()
                     .setColor(0xff00ff)
-                    .setTitle('🎵 Friday Night Funkin\'')
-                    .setDescription(`**Current Note:** ${nextNote}\n\n**Score:** ${game.score}\n**Streak:** ${game.streak}`)
+                    .setTitle('🎵 Friday Night Funkin\' (v1.5 - Timed!)')
+                    .setDescription(`**Current Note:** ${chart[0]}\n⏱️ **30 second timer**\n\n**Score:** ${game.score}\n**Streak:** ${game.streak}`)
                     .setFooter({ text: `Note 1/${chart.length}` });
 
                 const msg = await interaction.reply({ embeds: [embed], components: [buttons], fetchReply: true });
@@ -440,27 +523,26 @@ client.on('interactionCreate', async interaction => {
 
                             const winEmbed = new EmbedBuilder()
                                 .setColor(0x00ff00)
-                                .setTitle('🎊 Song Complete!')
+                                .setTitle('🎊 Perfect Song Complete!')
                                 .addFields(
                                     { name: 'Final Score', value: `**${game.score}**`, inline: true },
-                                    { name: 'Coins Earned', value: `**${game.score}**`, inline: true },
-                                    { name: 'XP Earned', value: `**${game.score}**`, inline: true }
+                                    { name: 'Coins', value: `**+${game.score}**`, inline: true },
+                                    { name: 'XP', value: `**+${game.score}**`, inline: true }
                                 );
                             await msg.edit({ embeds: [winEmbed], components: [] }).catch(() => {});
                             return;
                         }
 
                         hitThisNote = false;
+                        const elapsed = Math.floor((Date.now() - game.startTime) / 1000);
                         const updatedEmbed = new EmbedBuilder()
                             .setColor(0xff00ff)
-                            .setTitle('🎵 Friday Night Funkin\'')
-                            .setDescription(`**Current Note:** ${chart[game.current]}\n\n**Score:** ${game.score}\n**Streak:** ${game.streak}`)
+                            .setTitle('🎵 Friday Night Funkin\' (v1.5)')
+                            .setDescription(`**Current Note:** ${chart[game.current]}\n⏱️ **${30 - elapsed}s left**\n\n**Score:** ${game.score}\n**Streak:** ${game.streak}`)
                             .setFooter({ text: `Note ${game.current + 1}/${chart.length}` });
                         await msg.edit({ embeds: [updatedEmbed] }).catch(() => {});
                     } else {
                         game.streak = 0;
-                        coins.set(userId, Math.max(0, (Number(coins.get(userId)) || 0) - 50));
-                        saveData();
                     }
 
                     await btn.deferUpdate().catch(() => {});
@@ -468,14 +550,205 @@ client.on('interactionCreate', async interaction => {
 
                 collector.on('end', async () => {
                     if (fnfGames.has(userId)) {
+                        const finalScore = fnfGames.get(userId)?.score || 0;
                         fnfGames.delete(userId);
                         const finalEmbed = new EmbedBuilder()
                             .setColor(0xff0000)
-                            .setTitle('💔 Game Over!')
-                            .setDescription(`Final Score: **${game.score}**`);
+                            .setTitle('💔 Time\'s Up!')
+                            .setDescription(`Final Score: **${finalScore}**`);
                         await msg.edit({ embeds: [finalEmbed], components: [] }).catch(() => {});
                     }
                 });
+                return;
+            }
+
+            // WORDLE
+            if (interaction.commandName === 'wordle') {
+                const guess = String(interaction.options.getString('guess')).toLowerCase();
+                const channelId = String(interaction.channelId);
+                
+                if (!wordleGames.has(channelId)) {
+                    const word = WORDLE_WORDS[Math.floor(Math.random() * WORDLE_WORDS.length)];
+                    wordleGames.set(channelId, { word, guesses: [], maxGuesses: 6 });
+                }
+
+                const game = wordleGames.get(channelId);
+                if (guess.length !== 5) {
+                    await interaction.reply({ content: '❌ Must be exactly 5 letters', ephemeral: true });
+                    return;
+                }
+
+                const result = evaluateGuess(game.word, guess);
+                game.guesses.push({ guess, result });
+
+                let board = '';
+                for (const { guess: g, result: r } of game.guesses) {
+                    board += r.join('') + '  ' + g.toUpperCase().split('').join(' ') + '\n';
+                }
+
+                const embed = new EmbedBuilder()
+                    .setTitle('🟩 Wordle')
+                    .setDescription(board)
+                    .setColor(guess === game.word ? 0x57F287 : 0x7289DA);
+
+                if (guess === game.word) {
+                    embed.setFooter({ text: `🎉 Solved in ${game.guesses.length} guess${game.guesses.length === 1 ? '' : 'es'}!` });
+                    coins.set(userId, (Number(coins.get(userId)) || 0) + 500);
+                    xp.set(userId, (Number(xp.get(userId)) || 0) + 250);
+                    saveData();
+                    wordleGames.delete(channelId);
+                } else if (game.guesses.length >= game.maxGuesses) {
+                    embed.setFooter({ text: `The word was: ${game.word.toUpperCase()}` });
+                    wordleGames.delete(channelId);
+                } else {
+                    embed.setFooter({ text: `${game.maxGuesses - game.guesses.length} guesses left` });
+                }
+
+                await interaction.reply({ embeds: [embed] });
+                return;
+            }
+
+            // LOGS
+            if (interaction.commandName === 'logs') {
+                if (!isStaff) {
+                    await interaction.reply({ content: '❌ Staff only', ephemeral: true });
+                    return;
+                }
+                const channel = interaction.options.getChannel('channel');
+                logsConfig[interaction.guildId] = channel.id;
+                saveData();
+                await interaction.reply({ content: `✅ Mod logs set to <#${channel.id}>`, ephemeral: true });
+                return;
+            }
+
+            // WELCOME
+            if (interaction.commandName === 'welcome') {
+                if (!isStaff) {
+                    await interaction.reply({ content: '❌ Staff only', ephemeral: true });
+                    return;
+                }
+                const channel = interaction.options.getChannel('channel');
+                const role = interaction.options.getRole('role');
+                
+                welcomeConfig[interaction.guildId] = { channelId: channel.id, roleId: role?.id || null };
+
+                const modal = new ModalBuilder()
+                    .setCustomId(`welcome_modal_${interaction.guildId}`)
+                    .setTitle('Welcome Message Setup')
+                    .addComponents(
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId('welcome_msg')
+                                .setLabel('Welcome Message')
+                                .setStyle(TextInputStyle.Paragraph)
+                                .setPlaceholder('Welcome to the server!')
+                                .setRequired(true)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId('welcome_img')
+                                .setLabel('Image URL (optional)')
+                                .setStyle(TextInputStyle.Short)
+                                .setRequired(false)
+                        )
+                    );
+
+                await interaction.showModal(modal);
+                return;
+            }
+
+            // ADDRESPONSE
+            if (interaction.commandName === 'addresponse') {
+                if (!isOwner) {
+                    await interaction.reply({ content: '❌ Owner only', ephemeral: true });
+                    return;
+                }
+                const trigger = String(interaction.options.getString('trigger')).toLowerCase();
+                const response = String(interaction.options.getString('response'));
+                autoResponses.set(trigger, response);
+                saveData();
+                await interaction.reply({ content: `✅ Added auto-response: \`${trigger}\` → \`${response}\``, ephemeral: true });
+                return;
+            }
+
+            // REMOVERESPONSE
+            if (interaction.commandName === 'removeresponse') {
+                if (!isOwner) {
+                    await interaction.reply({ content: '❌ Owner only', ephemeral: true });
+                    return;
+                }
+                const trigger = String(interaction.options.getString('trigger')).toLowerCase();
+                if (autoResponses.delete(trigger)) {
+                    saveData();
+                    await interaction.reply({ content: `✅ Removed auto-response: \`${trigger}\``, ephemeral: true });
+                } else {
+                    await interaction.reply({ content: '❌ Not found', ephemeral: true });
+                }
+                return;
+            }
+
+            // LISTRESPONSES
+            if (interaction.commandName === 'listresponses') {
+                if (!isOwner) {
+                    await interaction.reply({ content: '❌ Owner only', ephemeral: true });
+                    return;
+                }
+                if (!autoResponses.size) {
+                    await interaction.reply({ content: 'No auto-responses yet', ephemeral: true });
+                    return;
+                }
+                let text = '**Auto-Responses:**\n';
+                for (const [k, v] of autoResponses) {
+                    text += `\`${k}\` → \`${v}\`\n`;
+                }
+                await interaction.reply({ content: text, ephemeral: true });
+                return;
+            }
+
+            // IMPERSONATE
+            if (interaction.commandName === 'impersonate') {
+                if (!isStaff) {
+                    await interaction.reply({ content: '❌ Staff only', ephemeral: true });
+                    return;
+                }
+                const target = interaction.options.getUser('user');
+                const channelId = String(interaction.channelId);
+                
+                try {
+                    const webhook = await interaction.channel.createWebhook({
+                        name: target.username,
+                        avatar: target.displayAvatarURL()
+                    });
+                    
+                    activeImpersonations.set(channelId, {
+                        userId: target.id,
+                        username: target.username,
+                        avatarUrl: target.displayAvatarURL(),
+                        webhookId: webhook.id,
+                        webhookToken: webhook.token
+                    });
+
+                    await interaction.reply({ content: `✅ Now impersonating **${target.username}** in this channel!`, ephemeral: true });
+                } catch (e) {
+                    await interaction.reply({ content: `❌ Error: ${e?.message}`, ephemeral: true });
+                }
+                return;
+            }
+
+            // STOPIMPERSONATE
+            if (interaction.commandName === 'stopimpersonate') {
+                if (!isStaff) {
+                    await interaction.reply({ content: '❌ Staff only', ephemeral: true });
+                    return;
+                }
+                const channelId = String(interaction.channelId);
+                const imp = activeImpersonations.get(channelId);
+                if (!imp) {
+                    await interaction.reply({ content: '❌ Not impersonating anyone here', ephemeral: true });
+                    return;
+                }
+                activeImpersonations.delete(channelId);
+                await interaction.reply({ content: `✅ Stopped impersonating`, ephemeral: true });
                 return;
             }
 
@@ -485,12 +758,10 @@ client.on('interactionCreate', async interaction => {
                     await interaction.reply({ content: '❌ Staff only', ephemeral: true });
                     return;
                 }
-                const target = interaction.options?.getUser('user');
-                const amount = interaction.options?.getInteger('amount');
-                if (!target || !amount) return;
-
+                const target = interaction.options.getUser('user');
+                const amount = interaction.options.getInteger('amount');
                 const tid = String(target.id);
-                xp.set(tid, (Number(xp.get(tid)) || 0) + Number(amount));
+                xp.set(tid, (Number(xp.get(tid)) || 0) + amount);
                 saveData();
                 await interaction.reply({ content: `✅ Added **${amount}** XP to <@${tid}>`, ephemeral: true });
                 return;
@@ -502,12 +773,10 @@ client.on('interactionCreate', async interaction => {
                     await interaction.reply({ content: '❌ Staff only', ephemeral: true });
                     return;
                 }
-                const target = interaction.options?.getUser('user');
-                const amount = interaction.options?.getInteger('amount');
-                if (!target || !amount) return;
-
+                const target = interaction.options.getUser('user');
+                const amount = interaction.options.getInteger('amount');
                 const tid = String(target.id);
-                coins.set(tid, (Number(coins.get(tid)) || 0) + Number(amount));
+                coins.set(tid, (Number(coins.get(tid)) || 0) + amount);
                 saveData();
                 await interaction.reply({ content: `✅ Added **${amount}** coins to <@${tid}>`, ephemeral: true });
                 return;
@@ -534,24 +803,50 @@ const cooldowns = new Map();
 
 client.on('messageCreate', async message => {
     try {
+        // Auto-responses
+        if (!message.author.bot) {
+            const content = message.content.toLowerCase();
+            for (const [trigger, response] of autoResponses) {
+                if (content.includes(trigger)) {
+                    try {
+                        await message.reply(response);
+                    } catch (e) {
+                        console.error('Auto-response error:', e?.message);
+                    }
+                }
+            }
+        }
+
+        // Impersonate
+        const imp = activeImpersonations.get(String(message.channelId));
+        if (imp && message.author.id === OWNER_ID) {
+            try {
+                const wh = new WebhookClient({ id: imp.webhookId, token: imp.webhookToken });
+                await wh.send({ content: message.content, username: imp.username, avatarURL: imp.avatarUrl });
+                await message.delete();
+                return;
+            } catch (e) {
+                console.error('Webhook error:', e?.message);
+            }
+        }
+
         if (!message.content.startsWith(PREFIX) || message.author.bot) return;
 
         const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
         const cmd = args.shift().toLowerCase();
         const userId = String(message.author.id);
-        const isOwner = userId === OWNER_ID;
-        const isStaff = staffSet.has(userId) || isOwner;
 
         try {
             // !help
             if (cmd === 'help') {
                 const embed = new EmbedBuilder()
                     .setColor(0x00ff88)
-                    .setTitle('📖 Bot Help')
+                    .setTitle('📖 Bot v1.5 Help')
                     .addFields(
-                        { name: 'Economy', value: '`!daily` `!rob` `!gamble`', inline: true },
-                        { name: 'Games', value: '`!fnf` `!fight` `!steal`', inline: true },
-                        { name: 'Info', value: '`!bal` `!rank` `!profile`', inline: true }
+                        { name: 'Economy', value: '`!daily` `!rob` `!gamble` `!steal`', inline: true },
+                        { name: 'Games', value: '`!fnf` `!fight`', inline: true },
+                        { name: 'Anime', value: '`!domain` `!hollow` `!infinity` `!unleash` `!bankai` `!gear5` `!sharingan` `!attackontitan`', inline: true },
+                        { name: 'Fun', value: '`!ragebait`', inline: true }
                     );
                 return message.reply({ embeds: [embed] });
             }
@@ -561,7 +856,8 @@ client.on('messageCreate', async message => {
                 const lastDaily = cooldowns.get(`daily_${userId}`);
                 const now = Date.now();
                 if (lastDaily && now - lastDaily < 86400000) {
-                    return message.reply('⏰ Daily already claimed! Come back tomorrow.');
+                    const timeLeft = Math.ceil((86400000 - (now - lastDaily)) / 3600000);
+                    return message.reply(`⏰ Daily already claimed! Come back in **${timeLeft}h**.`);
                 }
 
                 const reward = Math.floor(Math.random() * 500) + 200;
@@ -619,9 +915,10 @@ client.on('messageCreate', async message => {
                 const wid = String(winner.id);
 
                 coins.set(wid, (Number(coins.get(wid)) || 0) + 100);
+                xp.set(wid, (Number(xp.get(wid)) || 0) + 50);
                 saveData();
 
-                return message.reply(`⚔️ **${message.author.username}** (${p1Dmg}) vs **${target.username}** (${p2Dmg})\n🏆 ${winner.username} wins **100 coins**!`);
+                return message.reply(`⚔️ **${message.author.username}** (${p1Dmg}) vs **${target.username}** (${p2Dmg})\n🏆 ${winner.username} wins **100 coins** & **50 XP**!`);
             }
 
             // !steal
@@ -641,10 +938,10 @@ client.on('messageCreate', async message => {
                 return message.reply(`🗡️ Stole **${stolen?.name || 'weapon'}** from **${target.username}**!`);
             }
 
-            // !fnf
+            // !fnf (prefix version)
             if (cmd === 'fnf') {
                 const chart = generateFNFChart('hard');
-                const game = { score: 0, streak: 0, notes: chart, current: 0 };
+                const game = { score: 0, streak: 0, notes: chart, current: 0, startTime: Date.now() };
                 fnfGames.set(userId, game);
 
                 const buttons = new ActionRowBuilder().addComponents(
@@ -656,8 +953,8 @@ client.on('messageCreate', async message => {
 
                 const embed = new EmbedBuilder()
                     .setColor(0xff00ff)
-                    .setTitle('🎵 FNF Rhythm Battle')
-                    .setDescription(`**Current:** ${chart[0]}\n**Score:** 0 | **Streak:** 0`)
+                    .setTitle('🎵 FNF Rhythm Battle (Hard - 60s)')
+                    .setDescription(`**Current:** ${chart[0]}\n⏱️ **60 second timer**\n**Score:** 0 | **Streak:** 0`)
                     .setFooter({ text: `Note 1/${chart.length}` });
 
                 const msg = await message.reply({ embeds: [embed], components: [buttons] });
@@ -702,10 +999,11 @@ client.on('messageCreate', async message => {
                         }
 
                         hitThisNote = false;
+                        const elapsed = Math.floor((Date.now() - game.startTime) / 1000);
                         const upd = new EmbedBuilder()
                             .setColor(0xff00ff)
                             .setTitle('🎵 FNF Rhythm Battle')
-                            .setDescription(`**Current:** ${chart[game.current]}\n**Score:** ${game.score} | **Streak:** ${game.streak}`)
+                            .setDescription(`**Current:** ${chart[game.current]}\n⏱️ **${60 - elapsed}s**\n**Score:** ${game.score} | **Streak:** ${game.streak}`)
                             .setFooter({ text: `Note ${game.current + 1}/${chart.length}` });
                         await msg.edit({ embeds: [upd] }).catch(() => {});
                     } else {
@@ -720,12 +1018,48 @@ client.on('messageCreate', async message => {
                         fnfGames.delete(userId);
                         const end = new EmbedBuilder()
                             .setColor(0xff0000)
-                            .setTitle('💔 Failed')
+                            .setTitle('💔 Time\'s Up!')
                             .setDescription(`Final Score: ${game.score}`);
                         await msg.edit({ embeds: [end], components: [] }).catch(() => {});
                     }
                 });
                 return;
+            }
+
+            // ANIME COMMANDS
+            const animeResponses = {
+                'domain': '**Infinity Domain!** 🌌 A cursed technique that warps space! (-10 health for enemies)',
+                'hollow': '**Hollow Mask Activated!** 💀 Your power multiplies tenfold!',
+                'infinity': '**Infinity Triggered!** ♾️ No one can touch you now...',
+                'unleash': '**Beast Unleashed!** 🔥 Raw power overflowing!',
+                'bankai': '**BANKAI!!!!** ⚔️ True power revealed!',
+                'gear5': '**GEAR 5 ACTIVATED!** 🎪 Nika has arrived! Cartoon physics engaged!',
+                'sharingan': '**Sharingan Activated!** 👁️ You can see all movements now!',
+                'attackontitan': '**Colossal Titan Transformation!** 🗻 Titan power awakened!'
+            };
+
+            for (const [aCmd, response] of Object.entries(animeResponses)) {
+                if (cmd === aCmd) {
+                    xp.set(userId, (Number(xp.get(userId)) || 0) + 25);
+                    saveData();
+                    return message.reply(response);
+                }
+            }
+
+            // !ragebait
+            if (cmd === 'ragebait') {
+                const bait = [
+                    '**RAGEBAIT SUCCESSFUL!** 🎣 Everyone is arguing in the chat now lmaooo',
+                    'he says he wants to be the very best, like no one ever was 💀',
+                    'watching anime is for losers (this is ragebait dont mad)',
+                    'pineapple belongs on pizza 🍕',
+                    'minecraft java edition is outdated',
+                    'fortnite is better than any other game',
+                    'discord is overrated'
+                ];
+                coins.set(userId, (Number(coins.get(userId)) || 0) + 50);
+                saveData();
+                return message.reply(bait[Math.floor(Math.random() * bait.length)]);
             }
 
         } catch (err) {
@@ -739,6 +1073,37 @@ client.on('messageCreate', async message => {
 
     } catch (msgErr) {
         console.error('❌ Message error:', msgErr?.message);
+    }
+});
+
+// Handle welcome messages
+client.on('guildMemberAdd', async member => {
+    try {
+        const guildId = String(member.guild.id);
+        const config = welcomeConfig[guildId];
+        if (!config) return;
+
+        const channel = await member.guild.channels.fetch(config.channelId);
+        if (!channel) return;
+
+        if (config.roleId) {
+            try {
+                await member.roles.add(config.roleId);
+            } catch (e) {
+                console.error('Role add error:', e?.message);
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x57F287)
+            .setTitle('Welcome!')
+            .setDescription(config.message)
+            .setThumbnail(member.user.displayAvatarURL());
+        if (config.imageUrl) embed.setImage(config.imageUrl);
+
+        await channel.send({ content: `Welcome <@${member.id}>!`, embeds: [embed] });
+    } catch (e) {
+        console.error('Welcome error:', e?.message);
     }
 });
 

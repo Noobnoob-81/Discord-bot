@@ -1123,7 +1123,7 @@ client.on('error', err => {
 client.on('warn', warn => {
     console.warn('⚠️ Warning:', warn);
 });
-
+j
 // ─── LOGIN ───────────────────────────────────────────────
 if (!process.env.TOKEN) {
     console.error('❌ ERROR: TOKEN not in .env!');
